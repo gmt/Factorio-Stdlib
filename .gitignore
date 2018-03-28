@@ -13,7 +13,7 @@ mod/*
 *.stackdump
 
 # vim swapfiles
-.*.swp
+.*.sw?
 
 # {l,c}tags
 /tags
