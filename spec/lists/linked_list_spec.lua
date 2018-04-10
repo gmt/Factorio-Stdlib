@@ -564,12 +564,17 @@ describe('LinkedList', function()
     end)
 
     describe('.copy', function()
-        it('copies stuff', function()
+        it('copies the list structure but does not copy the items', function()
             local l1 = LinkedList:new()
-            l1:append('one')
-            l1:append('two')
-            l1:append('three')
-            l1:append('four')
+            local i1 = {}
+            local i2 = {}
+            local i4 = {}
+            local i5 = {}
+            l1:append(i1)
+            l1:append(i2)
+            l1:append(nil)
+            l1:append(i4)
+            l1:append(i5)
             local l2 = l1:copy()
 
             assert.is_not_equal(l1, l2)
@@ -580,25 +585,167 @@ describe('LinkedList', function()
             assert.has_no.errors(function()
                 l2:validate_integrity()
             end)
-            assert.is_not.Nil(        l2.next)
-            assert.are.equal('one',   l2.next.item)
-            assert.is_not.Nil(        l2.next.next)
-            assert.are.equal('two',   l2.next.next.item)
-            assert.is_not.Nil(        l2.next.next.next)
-            assert.are.equal('three', l2.next.next.next.item)
-            assert.is_not.Nil(        l2.next.next.next.next)
-            assert.are.equal('four',  l2.next.next.next.next.item)
+            assert.is_not.Nil(   l2.next)
+            assert.are.equal(i1, l2.next.item)
+            assert.is_not.Nil(   l2.next.next)
+            assert.are.equal(i2, l2.next.next.item)
+            assert.is_not.Nil(   l2.next.next.next)
+            assert.is.Nil(       l2.next.next.next.item)
+            assert.is_not.Nil(   l2.next.next.next.next)
+            assert.are.equal(i4, l2.next.next.next.next.item)
+            assert.is_not.Nil(   l2.next.next.next.next.next)
+            assert.are.equal(i5, l2.next.next.next.next.next.item)
         end)
+    end)
 
-        it('does not create deep copies', function()
-            local l1 = LinkedList:new()
-            l1:append({'foo', 'bar'})
+    describe('.deepcopy', function()
+        it('copies the list structure, deeply copying each item', function()
+            local generated_stack = {}
+            local function generate_item()
+                -- take the most recently generated item as the "contents";
+                -- this way, the items are like russian dolls, providing
+                -- a reasonably challenging workout for flexcopy.
+                local result={contents=generated_stack[#generated_stack]}
+                table.insert(generated_stack, result)
+                return result
+            end
+            generate_item()
+            generate_item()
+            generate_item()
+            generate_item()
+            generate_item()
+
+            -- The first item should be {}; lets call that "A".
+            -- The second item should be {contents=A}; let's call
+            -- that "B".  The third item should be {contents=B}
+            -- So, the third item, in full should look like:
+            -- {contents={contents={contents={}}}}
+            --
+            -- When converted to a linked list...
+            --
+            -- first==l.next=={}
+            -- first.next=={contents=first}
+            -- first.next.next=={contents=first.next}
+            -- and so on...
+            --
+            -- The following simply sanity checks that our generate_item
+            -- works as intended and does not really test linkedlist at all.
+            assert.are.same({}, generated_stack[1])
+            assert.are.same({contents={}}, generated_stack[2])
+            assert.are.same({contents={contents={}}}, generated_stack[3])
+            assert.are.equal(generated_stack[1], generated_stack[2].contents)
+            assert.are.equal(generated_stack[2], generated_stack[3].contents)
+            assert.are.equal(generated_stack[3], generated_stack[4].contents)
+            assert.are.equal(generated_stack[4], generated_stack[5].contents)
+            assert.are.equal(5, #generated_stack)
+
+            local l1 = LinkedList:from_stack(generated_stack)
+            -- more sanity checking
+            assert.are.equal(generated_stack[1], l1[1])
+            assert.are.equal(generated_stack[2], l1[2])
+            assert.are.equal(generated_stack[3], l1[3])
+            assert.are.equal(generated_stack[4], l1[4])
+            assert.are.equal(generated_stack[5], l1[5])
+
+            -- Now we test the actual deepcopy
+            local l2 = l1:deepcopy()
+            assert.is_not.Nil(l2[1])
+            assert.is_not.Nil(l2[2])
+            assert.is_not.Nil(l2[3])
+            assert.is_not.Nil(l2[4])
+            assert.is_not.Nil(l2[5])
+            assert.are.equal(5, #l2)
+
+            -- items should be copied faithfully but not equal
+            assert.are.same(l1[1], l2[1])
+            assert.are_not.equal(l1[1], l2[1])
+            assert.are.same(l1[2], l2[2])
+            assert.are_not.equal(l1[2], l2[2])
+            assert.are.same(l1[3], l2[3])
+            assert.are_not.equal(l1[3], l2[3])
+            assert.are.same(l1[4], l2[4])
+            assert.are_not.equal(l1[4], l2[4])
+            assert.are.same(l1[5], l2[5])
+            assert.are_not.equal(l1[5], l2[5])
+
+            -- internal self-references should be preserved
+            assert.are.equal(l2[1], l2[2].contents)
+            assert.are.equal(l2[2], l2[3].contents)
+            assert.are.equal(l2[3], l2[4].contents)
+            assert.are.equal(l2[4], l2[5].contents)
+        end)
+    end)
+
+    describe('.copy', function()
+        it('copies the list structure, deeply copying each item', function()
+            local generated_stack = {}
+            local function generate_item()
+                -- take the most recently generated item as the "contents";
+                -- this way, the items are like russian dolls, providing
+                -- a reasonably challenging workout for flexcopy.
+                local result={contents=generated_stack[#generated_stack]}
+                table.insert(generated_stack, result)
+                return result
+            end
+            generate_item()
+            generate_item()
+            generate_item()
+            generate_item()
+            generate_item()
+
+            -- The first item should be {}; lets call that "A".
+            -- The second item should be {contents=A}; let's call
+            -- that "B".  The third item should be {contents=B}
+            -- So, the third item, in full should look like:
+            -- {contents={contents={contents={}}}}
+            --
+            -- When converted to a linked list...
+            --
+            -- first==l.next=={}
+            -- first.next=={contents=first}
+            -- first.next.next=={contents=first.next}
+            -- and so on...
+            --
+            -- The following simply sanity checks that our generate_item
+            -- works as intended and does not really test linkedlist at all.
+            assert.are.same({}, generated_stack[1])
+            assert.are.same({contents={}}, generated_stack[2])
+            assert.are.same({contents={contents={}}}, generated_stack[3])
+            assert.are.equal(generated_stack[1], generated_stack[2].contents)
+            assert.are.equal(generated_stack[2], generated_stack[3].contents)
+            assert.are.equal(generated_stack[3], generated_stack[4].contents)
+            assert.are.equal(generated_stack[4], generated_stack[5].contents)
+            assert.are.equal(5, #generated_stack)
+
+            local l1 = LinkedList:from_stack(generated_stack)
+            -- more sanity checking
+            assert.are.equal(generated_stack[1], l1[1])
+            assert.are.equal(generated_stack[2], l1[2])
+            assert.are.equal(generated_stack[3], l1[3])
+            assert.are.equal(generated_stack[4], l1[4])
+            assert.are.equal(generated_stack[5], l1[5])
+
+            -- Now we test the actual copy
             local l2 = l1:copy()
+            assert.is_not.Nil(l2[1])
+            assert.is_not.Nil(l2[2])
+            assert.is_not.Nil(l2[3])
+            assert.is_not.Nil(l2[4])
+            assert.is_not.Nil(l2[5])
+            assert.are.equal(5, #l2)
 
-            assert.is_not_equal(l1, l2)
-            assert.is_not.Nil(l1.next)
-            assert.is_not.Nil(l2.next)
-            assert.are.equal(l1.next.item, l2.next.item)
+            -- items should be equal
+            assert.are.equal(l1[1], l2[1])
+            assert.are.equal(l1[2], l2[2])
+            assert.are.equal(l1[3], l2[3])
+            assert.are.equal(l1[4], l2[4])
+            assert.are.equal(l1[5], l2[5])
+
+            -- internal self-references should be preserved
+            assert.are.equal(l2[1], l2[2].contents)
+            assert.are.equal(l2[2], l2[3].contents)
+            assert.are.equal(l2[3], l2[4].contents)
+            assert.are.equal(l2[4], l2[5].contents)
         end)
     end)
 
