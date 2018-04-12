@@ -53,23 +53,17 @@ end
 function LinkedList:new_node(item, prev, next)
     -- only way to determine if this is a class or an instance
     Is.Assert.Not.Nil(self, 'Use foo:new_node, not foo.new_node to create new nodes')
-    Is.Assert.Not.Nil(self.next, 'Use :new to create LinkedList instance objects')
 
-    -- holy crap, is there some better way to find the node class?  Maybe separate
-    -- LinkedList:new_node from LinkedListNode:new_node?
-    local node_class = self._is_LinkedList and Is.Nil(self.next) and self._node_class
-        or self._is_LinkedList and self._class and self._class._node_class
-        or self._is_LinkedListNode and self._class
-        or self._is_LinkedListNode and self
-
+    -- Retrieve the node class from the class if we are an instance
+    local node_class = Is.Nil(self.next) and self._node_class
+        or self._class and self._class._node_class
+        or error('LinkedList:new_node: cannot find node class, improper invocation?')
     local result = setmetatable({_class = node_class}, node_class._mt)
     result.next = next or result
     result.prev = prev or result
     result.item = item
     return result
 end
--- the new_node method is shared (physically) by both LinkedList instance objects and LinkedListNode instances
-LinkedListNode.new_node = LinkedList.new_node
 
 function LinkedList:from_stack(stack, allow_insane_sparseness)
     Is.Assert.Not.Nil(self._class, [[LinkedList:from_stack is a class method, not a static function; \z
@@ -290,7 +284,7 @@ end
 function LinkedList:_copy_with_to(copy_fn, other)
     local lastnode = other
     for selfnode in self:nodes() do
-        lastnode.next = selfnode:new_node(nil, lastnode, other)
+        lastnode.next = self:new_node(nil, lastnode, other)
         lastnode = lastnode.next
         selfnode:_copy_with_to(copy_fn, lastnode)
     end
