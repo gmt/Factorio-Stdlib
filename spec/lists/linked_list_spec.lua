@@ -1205,6 +1205,72 @@ describe('LinkedList', function()
         end)
     end)
 
+    describe('.ipairs', function()
+        it('works much like the standard lua ipairs function', function()
+            local l = LinkedList:new()
+            l:append(false)
+            local firstnode = l:append('bar')
+            l:append('baz')
+            l[5] = 6
+            local lastnode = l:last_node()
+
+            l.quux = 'zzyzx'
+            l[0] = 'zilch'
+            l[-1.333] = 0
+
+            local dummy = {}
+            local remaining_keys = {
+                [-1.333] = 0,
+                [0] = 'zilch',
+                [1] = false,
+                [2] = 'bar',
+                [3] = 'baz',
+                [4] = dummy,
+                [5] = 6,
+                _class = LinkedList,
+                quux = 'zzyzx',
+                next = firstnode,
+                prev = lastnode
+            }
+
+            for k, v in l:ipairs() do
+                -- here, unlike in the pairs() test, we expect a precise set of keys
+                -- to be provided (the keys should be 1, 2, 3, and 5 only).  So we do
+                -- fail if the key is not in remaining_keys as it contains all the
+                -- key values ipairs() should enumerate.
+                assert.is.Not.Nil(remaining_keys[k])
+                assert.are.equal(remaining_keys[k], v)
+                remaining_keys[k] = nil
+            end
+
+            -- we should have identified and hence removed only the psuedo-stack keys,
+            -- specifically, these are 1, 2, 3, and 5.
+            assert.are.same({
+                [-1.333] = 0,
+                [0] = 'zilch',
+                [4] = dummy,
+                _class = LinkedList,
+                quux = 'zzyzx',
+                next = firstnode,
+                prev = lastnode
+            }, remaining_keys)
+        end)
+
+        it('skips nil items and keeps iterating', function()
+            -- regular ipairs terminates iteration upon encountering a nil.
+            -- LinkedList:ipairs() does not.
+            local l = LinkedList:from_stack {1, 2, 3, 4, 5}
+            assert.is.Not.Nil(l.next)
+            assert.is.Not.Nil(l.next.next)
+            l.next.next.item = nil
+
+            local iterated_items = {}
+            for k,v in l:ipairs() do
+                iterated_items[k] = v
+            end
+            assert.are.same({1, [3] = 3, [4] = 4, [5] = 5}, iterated_items)
+        end)
+
     describe('.items', function()
         it('returns an iterator which traverses the items in the list, \z
             skipping any nil items.', function()
@@ -1563,7 +1629,10 @@ describe('LinkedList', function()
             assert.are.same({'foo', 'bar', 'baz'}, remaining_keys)
         end)
 
-        it('Maps ipairs to virtualized LinkedList:ipairs()', function()
+        it('Maps ipairs to LinkedList:ipairs()', function()
+            -- nb: pretty hard to test this fact without peering into the
+            -- black boxes.  So we simply repeat the exact same test that is
+            -- used for :ipairs() here.
             local l = LinkedList:new()
             l:append(false)
             local firstnode = l:append('bar')
