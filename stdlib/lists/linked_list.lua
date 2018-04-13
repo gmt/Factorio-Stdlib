@@ -277,6 +277,12 @@ function LinkedList:remove(index)
     end
 end
 
+function LinkedListNode:remove()
+    Is.Assert.Not.Nil(self, 'LinkedListNode.remove: Missing self argument (invoke as node:remove())', 3)
+    self.prev.next = self.next
+    self.next.prev = self.prev
+end
+
 function LinkedList:clear()
     Is.Assert.Not.Nil(self, 'LinkedList.clear: Missing self argument (invoke as list:clear())', 3)
     self.prev = self

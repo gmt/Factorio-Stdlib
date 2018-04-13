@@ -1614,3 +1614,25 @@ describe('LinkedList', function()
         end)
     end)
 end)
+
+describe('LinkedListNode', function()
+    it('is the _node_class of LinkedList', function()
+        assert.are.equal('LinkedListNode', LinkedList._node_class._class_name)
+    end)
+
+    describe('.remove', function()
+        it('Removes the given node from the list that contians it', function()
+            local l1 = LinkedList:from_stack {'a', 'b', 'c', 'd'}
+            local l2 = LinkedList:from_stack {'a', 'b', 'c', 'd'}
+            assert.is.Not.Nil(l2.next)
+            assert.is.Not.Nil(l2.next.next)
+
+            l1:remove(2)
+            l2.next.next:remove()
+
+            s1 = l1:to_stack()
+            s2 = l2:to_stack()
+            assert.are.same(s1, s2)
+        end)
+    end)
+end)
