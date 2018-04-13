@@ -1271,6 +1271,45 @@ describe('LinkedList', function()
             assert.are.same({1, [3] = 3, [4] = 4, [5] = 5}, iterated_items)
         end)
 
+        it('can nest iterations of a static list', function()
+            local l = LinkedList:from_stack {1, 2, 3, 4, 5}
+            local visited_items = {}
+
+            -- iterates until it reaches the node with index "depth", adding
+            -- each visited item to visited_items.  Before processing the node
+            -- with depth index, recursively invokes itself with depth = depth + 1
+            -- (unless depth is 5, at which point it stops recursing).
+            -- Should visit no more than 25 nodes.  Note that although we are
+            -- testing ipairs(), all the LinkedList iterators use the same
+            -- underlying iterator so this tests them all.
+
+            local total_iterations = 0
+            local function recursive_iterator(depth)
+                for index, value in l:ipairs() do
+                    total_iterations = total_iterations + 1
+                    assert.is.True(25 >= total_iterations)
+                    table.insert(visited_items, value)
+                    if depth < 5 and depth == value then
+                        recursive_iterator(depth + 1)
+                    end
+                end
+            end
+            recursive_iterator(1)
+
+            assert.are.same({
+                1,
+                1, 2,
+                1, 2, 3,
+                1, 2, 3, 4,
+                1, 2, 3, 4, 5,
+                            5,
+                         4, 5,
+                      3, 4, 5,
+                   2, 3, 4, 5
+            }, visited_items)
+        end)
+    end)
+
     describe('.items', function()
         it('returns an iterator which traverses the items in the list, \z
             skipping any nil items.', function()
