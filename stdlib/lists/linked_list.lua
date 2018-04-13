@@ -277,6 +277,12 @@ function LinkedList:remove(index)
     end
 end
 
+function LinkedList:clear()
+    Is.Assert.Not.Nil(self, 'LinkedList.clear: Missing self argument (invoke as list:clear())', 3)
+    self.prev = self
+    self.next = self
+end
+
 function LinkedListNode:_copy_with_to(copy_fn, other_node)
     other_node.item = copy_fn(self.item)
 end
