@@ -533,27 +533,35 @@ describe('LinkedList', function()
             l:append('two')
             l:append('three')
             assert.has_errors(function()
+                -- fraction
                 l:remove(6.3)
             end)
             assert.has_errors(function()
+                 -- zero
                 l:remove(0)
             end)
             assert.has_errors(function()
+                -- fraction 0 < r < 1
                 l:remove(0.5)
             end)
             assert.has_errors(function()
+                -- negative fraction
                 l:remove(-0.5)
             end)
             assert.has_errors(function()
+                -- negative whole number
                 l:remove(-10)
             end)
             assert.has_errors(function()
+                -- function
                 l:remove(function() end)
             end)
             assert.has_errors(function()
+                --table
                 l:remove({})
             end)
             assert.has_errors(function()
+                -- chair (just kidding: string)
                 l:remove('Eames')
             end)
             assert.is_not.Nil(        l.next)
