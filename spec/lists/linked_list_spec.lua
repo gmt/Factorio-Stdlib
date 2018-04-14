@@ -527,6 +527,12 @@ describe('LinkedList', function()
             assert.are.equal(4, l:length())
         end)
 
+        it('returns the removed node to callers', function()
+            local l = LinkedList:new()
+            local n = l:append('x')
+            assert.are.equal(n, n:remove())
+        end)
+
         it('will not accept non-index-y things as indexes.', function()
             local l = LinkedList:new()
             l:append('one')
@@ -1768,6 +1774,12 @@ describe('LinkedListNode', function()
             s1 = l1:to_stack()
             s2 = l2:to_stack()
             assert.are.same(s1, s2)
+        end)
+
+        it('Returns the removed node to callers', function()
+            local l = LinkedList:new()
+            local n = l:append('x')
+            assert.are.equal(n, n:remove())
         end)
 
         it('Does not affect an ongoing node iteration if the node removed \z
