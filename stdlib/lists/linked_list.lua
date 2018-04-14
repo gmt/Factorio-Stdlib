@@ -277,6 +277,7 @@ end
 
 function LinkedListNode:remove()
     Is.Assert.Not.Nil(self, 'LinkedListNode.remove: Missing self argument (invoke as node:remove())', 3)
+    Is.Assert.Not(self.is_tombstone, 'LinkedListNode.remove: Double-removal detected.', 3)
     self.prev.next = self.next
     self.next.prev = self.prev
     self.is_tombstone = true
