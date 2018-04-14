@@ -530,7 +530,7 @@ describe('LinkedList', function()
         it('returns the removed node to callers', function()
             local l = LinkedList:new()
             local n = l:append('x')
-            assert.are.equal(n, n:remove())
+            assert.are.equal(n, l:remove(1))
         end)
 
         it('will not accept non-index-y things as indexes.', function()
