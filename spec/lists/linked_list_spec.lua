@@ -594,6 +594,58 @@ describe('LinkedList', function()
             assert.are.equal(0, l:length())
             assert.are.same({1, 2, 3, 4, 5}, iterated_items)
         end)
+
+        it('Will cause an ongoing iteration to select the next non-removed \z
+            item even if multiple items, including the current item, are \z
+            removed.', function()
+            -- nb this is a potentially problematic test because once we remove
+            -- the current node, it still points to the next node.  Therefore,
+            -- if we immediately remove the next node (now the first), as well,
+            -- a naive iterator implementation might visit it next despite its
+            -- prior removal.
+            --
+            -- In this test we remove the first node of the list twice per
+            -- iteration; the expected behavior is to visit node one, remove
+            -- nodes one and two, visit node three, remove nodes three and
+            -- four, to visit node five, and, finally, to remove nodes
+            -- five and six.
+            local l = LinkedList:new()
+            l:append(1)
+            l:append(2)
+            l:append(3)
+            l:append(4)
+            l:append(5)
+            l:append(6)
+            local iterated_items = {}
+            for n in l:nodes() do
+                table.insert(iterated_items, n.item)
+                l:remove(1)
+                l:remove(1)
+            end
+            assert.are.equal(0, l:length())
+            assert.are.same({1, 3, 5}, iterated_items)
+
+            -- In this test we remove the first node of the list three times
+            -- per iteration; the expected behavior is to visit node one, remove
+            -- nodes one, two, and three, visit node four, and finally, remove
+            -- nodes four, five and six.
+            l = LinkedList:new()
+            l:append(1)
+            l:append(2)
+            l:append(3)
+            l:append(4)
+            l:append(5)
+            l:append(6)
+            iterated_items = {}
+            for n in l:nodes() do
+                table.insert(iterated_items, n.item)
+                l:remove(1)
+                l:remove(1)
+                l:remove(1)
+            end
+            assert.are.equal(0, l:length())
+            assert.are.same({1, 4}, iterated_items)
+        end)
     end)
 
     describe('.clear', function()
@@ -1799,6 +1851,89 @@ describe('LinkedListNode', function()
             end
             assert.are.equal(0, l:length())
             assert.are.same({1, 2, 3, 4, 5}, iterated_items)
+        end)
+
+        it('Does not affect an ongoing node iteration if the node removed \z
+            has already been returned by the iterator', function()
+            local l = LinkedList:new()
+            l:append(1)
+            l:append(2)
+            l:append(3)
+            l:append(4)
+            l:append(5)
+            local iterated_items = {}
+            for n in l:nodes() do
+                table.insert(iterated_items, n.item)
+                -- this makes sense because, having removed all the nodes
+                -- before it, the current -- node will always be the first one.
+                n:remove()
+            end
+            assert.are.equal(0, l:length())
+            assert.are.same({1, 2, 3, 4, 5}, iterated_items)
+        end)
+
+        it('Will cause an ongoing iteration to select the next non-removed \z
+            item even if multiple items, including the current item, are \z
+            removed.', function()
+            -- nb this is a potentially problematic test because once we remove
+            -- the current node, it still points to the next node.  Therefore,
+            -- if we immediately remove the next node (now the first), as well,
+            -- a naive iterator implementation might visit it next despite its
+            -- prior removal.
+            --
+            -- In this test we remove the first node of the list twice per
+            -- iteration; the expected behavior is to visit node one, remove
+            -- nodes one and two, visit node three, remove nodes three and
+            -- four, to visit node five, and, finally, to remove nodes
+            -- five and six.
+            local l = LinkedList:new()
+            l:append(1)
+            l:append(2)
+            l:append(3)
+            l:append(4)
+            l:append(5)
+            l:append(6)
+            local iterated_items = {}
+            for n in l:nodes() do
+                table.insert(iterated_items, n.item)
+                local nextnode = n.next
+                -- ensure we didn't reach the end of the list or something.
+                assert.is.Not.Nil(nextnode)
+                assert.are.equal('LinkedListNode', nextnode._class_name)
+                n:remove()
+                nextnode:remove()
+            end
+            assert.are.equal(0, l:length())
+            assert.are.same({1, 3, 5}, iterated_items)
+
+            -- In this test we remove the first node of the list three times
+            -- per iteration; the expected behavior is to visit node one, remove
+            -- nodes one, two, and three, visit node four, and finally, remove
+            -- nodes four, five and six.
+            l = LinkedList:new()
+            l:append(1)
+            l:append(2)
+            l:append(3)
+            l:append(4)
+            l:append(5)
+            l:append(6)
+            iterated_items = {}
+            for n in l:nodes() do
+                table.insert(iterated_items, n.item)
+                local nextnode = n.next
+                -- ensure we didn't reach the end of the list or something.
+                assert.is.Not.Nil(nextnode)
+                assert.are.equal('LinkedListNode', nextnode._class_name)
+                local nextnextnode = nextnode.next
+                -- ensure we didn't reach the end of the list or something.
+                assert.is.Not.Nil(nextnextnode)
+                assert.are.equal('LinkedListNode', nextnextnode._class_name)
+                n:remove()
+                nextnode:remove()
+                nextnextnode:remove()
+            end
+            assert.are.equal(0, l:length())
+            assert.are.same({1, 4}, iterated_items)
         end)
     end)
 end)

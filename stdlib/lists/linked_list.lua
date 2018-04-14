@@ -279,6 +279,7 @@ function LinkedListNode:remove()
     Is.Assert.Not.Nil(self, 'LinkedListNode.remove: Missing self argument (invoke as node:remove())', 3)
     self.prev.next = self.next
     self.next.prev = self.prev
+    self.is_tombstone = true
     return self
 end
 
@@ -320,7 +321,14 @@ end
 LinkedList.deepcopy = table.flexcopy
 
 function LinkedList:nodeiter(node)
-    return node.next ~= self and node.next or nil
+    local nextnode = node
+    -- if items have been removed during iteration, we may encounter
+    -- tombstones here.  Once we reach the next non-tombstoned node,
+    -- we have found our way back to the remaining legitimate nodes
+    repeat
+        nextnode = nextnode.next
+    until not nextnode.is_tombstone
+    return nextnode ~= self and nextnode or nil
 end
 
 function LinkedList:nodes()
