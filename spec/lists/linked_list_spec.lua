@@ -587,8 +587,8 @@ describe('LinkedList', function()
             local iterated_items = {}
             for n in l:nodes() do
                 table.insert(iterated_items, n.item)
-                -- this makes sense because, having removed all the nodes
-                -- before it, the current -- node will always be the first one.
+                -- since we removed all the nodes before it, the current node
+                -- should be the first one.
                 l:remove(1)
             end
             assert.are.equal(0, l:length())
