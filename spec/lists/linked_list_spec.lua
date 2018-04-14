@@ -569,6 +569,25 @@ describe('LinkedList', function()
             assert.is_not.Nil(        l.prev)
             assert.are.equal('three', l.prev.item)
         end)
+
+        it('Does not affect an ongoing node iteration if the node removed \z
+            has already been returned by the iterator', function()
+            local l = LinkedList:new()
+            l:append(1)
+            l:append(2)
+            l:append(3)
+            l:append(4)
+            l:append(5)
+            local iterated_items = {}
+            for n in l:nodes() do
+                table.insert(iterated_items, n.item)
+                -- this makes sense because, having removed all the nodes
+                -- before it, the current -- node will always be the first one.
+                l:remove(1)
+            end
+            assert.are.equal(0, l:length())
+            assert.are.same({1, 2, 3, 4, 5}, iterated_items)
+        end)
     end)
 
     describe('.clear', function()
@@ -1749,6 +1768,25 @@ describe('LinkedListNode', function()
             s1 = l1:to_stack()
             s2 = l2:to_stack()
             assert.are.same(s1, s2)
+        end)
+
+        it('Does not affect an ongoing node iteration if the node removed \z
+            has already been returned by the iterator', function()
+            local l = LinkedList:new()
+            l:append(1)
+            l:append(2)
+            l:append(3)
+            l:append(4)
+            l:append(5)
+            local iterated_items = {}
+            for n in l:nodes() do
+                table.insert(iterated_items, n.item)
+                -- since we removed all the nodes before it, the current node
+                -- should be the first one.
+                n:remove()
+            end
+            assert.are.equal(0, l:length())
+            assert.are.same({1, 2, 3, 4, 5}, iterated_items)
         end)
     end)
 end)
