@@ -267,9 +267,7 @@ function LinkedList:remove(index)
     local node = self.next
     while node ~= self do
         if count == index then
-            node.prev.next = node.next
-            node.next.prev = node.prev
-            return node
+            return node:remove()
         else
             count = count + 1
             node = node.next
