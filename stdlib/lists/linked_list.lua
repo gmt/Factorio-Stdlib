@@ -321,25 +321,30 @@ end
 
 LinkedList.deepcopy = table.flexcopy
 
-function LinkedList:nodeiter(node)
-    local nextnode = node
-    -- if items have been removed during iteration, we may encounter
-    -- tombstones here.  Once we reach the next non-tombstoned node,
-    -- we have found our way back to the remaining legitimate nodes
-    repeat
-        nextnode = nextnode.next
-    until not nextnode.is_tombstone
-    return nextnode ~= self and nextnode or nil
+function LinkedList:new_node_iterator()
+    Is.Assert.Not.Nil(self, 'LinkedList:new_node_iterator called without self argument \z
+        (did you mean to use ":" instead of "."?)', 2)
+    return function(linked_list, node)
+        Is.Assert.True(linked_list == self, 'Wrong Linked List provided to node iterator', 3)
+        local nextnode = node
+        -- if items have been removed during iteration, we may encounter
+        -- tombstones here.  Once we reach the next non-tombstoned node,
+        -- we have found our way back to the remaining legitimate nodes
+        repeat
+            nextnode = nextnode.next
+        until not nextnode.is_tombstone
+        return nextnode ~= linked_list and nextnode or nil
+    end
 end
 
 function LinkedList:nodes()
-    return self.nodeiter, self, self
+    return self:new_node_iterator(), self, self
 end
 
 function LinkedList:items()
     -- we "need" a closure here in order to track the node, since it is not
     -- returned by the iterator.
-    local iter = self.nodeiter
+    local iter = self:new_node_iterator()
     local node = self
     return function()
         -- not much we can do about nils here so ignore them
@@ -355,7 +360,7 @@ end
 function LinkedList:ipairs()
     local i = 0
     local node = self
-    local iter = self.nodeiter
+    local iter = self:new_node_iterator()
     -- we kind-of "need" a closure here or else we'll end up having to
     -- chase down the indexed node every iteration at potentially huge cost.
     return function()
