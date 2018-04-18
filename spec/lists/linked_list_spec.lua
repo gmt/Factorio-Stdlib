@@ -679,6 +679,40 @@ describe('LinkedList', function()
             l:clear()
             assert.are.equal(0, l:length())
         end)
+
+        it('causes all ongoing iterators to terminate as soon as the next item is requested.', function()
+            local l = LinkedList.new()
+            l:append(1)
+            l:append(2)
+            l:append(3)
+            l:append(4)
+            l:append(5)
+            l:append(6)
+            l:append(7)
+            l:append(8)
+            l:append(9)
+            for node in l:nodes() do
+                if node.item == 7 then
+                    for item in l:items() do
+                        if item == 3 then
+                            for index in ipairs(l) do
+                                if index == 5 then
+                                    l:clear()
+                                end
+                                -- we should never reach the sixth item
+                                assert.is_true(index < 6)
+                            end
+                        end
+                        -- we should never reach the fourth item
+                        assert.is_true(item < 4)
+                    end
+                end
+                -- we should never reach the eighth item
+                assert.is_true(node.item < 8)
+            end
+            -- make sure we actually emptied out the list
+            assert.are.equal(0, l:length())
+        end)
     end)
 
     describe('.copy', function()

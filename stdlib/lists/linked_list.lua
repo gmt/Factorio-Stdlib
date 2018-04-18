@@ -45,6 +45,9 @@ function LinkedList.new(self)
         return 'Use foo:new_node(), not foo:new(), to create new ' .. self._class_name .. ' nodes'
     end)
     local result = setmetatable({_class = self}, self._mt)
+    -- live_iterators is a set/bag (see _Programming_In_Lua_ 1st Ed. §11.5). It uses weak keys
+    -- so garbage collected iterators will be automatically removed (see :new_node_iter below).
+    result.live_iterators = setmetatable({}, {__mode = 'k'})
     result.next = result
     result.prev = result
     return result
@@ -286,6 +289,18 @@ end
 
 function LinkedList:clear()
     Is.Assert.Not.Nil(self, 'LinkedList.clear: Missing self argument (invoke as list:clear())', 3)
+    -- don't pull the rug out from under live iterators; tombstone each node as applicable,
+    -- skipping any nodes that were already iterated.
+    for iterator in pairs(self.live_iterators) do
+        if iterator.at then
+            local iterator_at = iterator.at
+            iterator.at = nil
+            while iterator_at ~= self do
+                iterator_at.is_tombstone = true
+                iterator_at = iterator_at.next
+            end
+        end
+    end
     self.prev = self
     self.next = self
 end
@@ -324,6 +339,8 @@ LinkedList.deepcopy = table.flexcopy
 function LinkedList:new_node_iterator()
     Is.Assert.Not.Nil(self, 'LinkedList:new_node_iterator called without self argument \z
         (did you mean to use ":" instead of "."?)', 2)
+    local iteration_tracker = {}
+    self.live_iterators[iteration_tracker] = true
     return function(linked_list, node)
         Is.Assert.True(linked_list == self, 'Wrong Linked List provided to node iterator', 3)
         local nextnode = node
@@ -333,7 +350,16 @@ function LinkedList:new_node_iterator()
         repeat
             nextnode = nextnode.next
         until not nextnode.is_tombstone
-        return nextnode ~= linked_list and nextnode or nil
+        nextnode = (nextnode ~= self and nextnode or nil)
+        iteration_tracker.at = nextnode
+        if nextnode == nil then
+            -- Technically, we could skip this step and rely on the garbage
+            -- collector, but even so we'd need iteration_tracker to be an upvalue.
+            -- Anyhow, why wait for GC?  We know we're done, now.
+            self.live_iterators[iteration_tracker] = nil
+            iteration_tracker = nil
+        end
+        return nextnode
     end
 end
 
