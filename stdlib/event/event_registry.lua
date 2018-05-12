@@ -63,13 +63,15 @@ EventRegistry._class = EventRegistry
 -- error handling).
 -- @param[opt] name An arbitrary value which may be used to distinguish between various EventRegistry instances.  If, during dispatch, no name field is provided, this name will be injected into the event table (@see EventRegistry:dispatch).
 -- @usage
--- local somebody_farted = EventRegistry:new('Somebody Farted')
+-- local somebody_farted_registry = EventRegistry:new('somebody_farted')
 -- @return (<span class="types">@{EventRegistry}</span>) a new EventRegistry instance
 function EventRegistry.new(self, name)
+    Is.Assert.Not.Nil(self, 'EventRegistry:new invoked without self argument: perhaps you used a dot instead of a colon?', 2)
     local result = LinkedList.new(self)
     result.name = name
     -- this set holds a ongoing dispatch_id's in self and is used
     -- to ensure correct semantics when change occurs during dispatch
+    result.live_dispatches = setmetatable({}, {__mode = 'k'})
     return result
 end
 
@@ -90,21 +92,90 @@ end
 -- @tparam[opt=nil] mixed pattern an invariant that is passed into the matcher function as its second parameter.  Any type is permitted.
 -- @return (<span class="types">@{EventRegistry}</span>) the EventRegistry instance object itself, for call chaining purposes (see usage, above).
 function EventRegistry:add_listener(listener, matcher, pattern)
+    Is.Assert.Not.Nil(self, 'EventRegistry:add_listener invoked without self argument: perhaps you used a dot instead of a colon?', 2)
+    Is.Assert.True(self._is_LinkedList, 'EventRegistry:add_listener self argument invalid: perhaps you used a dot instead of a colon?', 2)
     Is.Assert(Is.Callable(listener), 'listener missing or not callable')
     Is.Assert(Is.Nil(matcher) or Is.Callable(matcher), 'matcher must be callable')
 
-    --If listener is already registered for this event: remove it for re-insertion at the end.
+    -- Is it a re-registration of an already registered listener?
+    local re_registration = false
+
+    -- If listener is already registered for this event: remove it for re-insertion at the end.
     for registrant in self:nodes() do
         if registrant.listener == listener and registrant.pattern == pattern and registrant.matcher == matcher then
-            registrant:remove()
+            if registrant.next == self then
+                -- nothing to do, registrant already is at the end of the list
+                return self
+            end
+            -- nb: what if registrant is already marked for skipping during dispatch?
+            -- In this case we should never "change our minds" about skipping.  Since we
+            -- only add to the set but never subtract (the dispatch_id lifecycle takes care
+            -- of the rest of the housekeeping for us), there is no need to worry about it,
+            -- so long as we prune-graft the node, rather than build ourselves a new one.
+            -- Remembering this here causes just that to occur immediately below.
+            re_registration = registrant:remove()
             break
         end
     end
 
     -- insert the new registrant
-    local registrant = self:append(listener)
+    local registrant = re_registration or self:append(listener)
+    -- if re_registration, these should be harmless noops
     registrant.matcher = matcher
     registrant.pattern = pattern
+
+    if re_registration then
+        for live_dispatch in pairs(self.live_dispatches) do
+            -- probably not neccesary but just a sanity check:
+            if live_dispatch.current_node then
+                --
+                -- if the dispatch already dispatched to re_registration, then we have to remember not to
+                -- repeat the dispatch a second time when we encounter the re-added registrant again
+                --
+                -- We just scan through from the first node until we encounter either:
+                --
+                --  o the place where the removed node was before removal (re_registration.next),
+                --    (no wierd stuff should have happened so re_registration.next still points
+                --    to where the removed used to be): the event has already been dispatched to the
+                --    moved listener
+                --
+                --  o the current node (live_dispatch.current_node): the event has not yet been dispatched
+                --    to the moved listener.
+                --
+                -- If the event was already dispatched to the moved listener, we have to make a note-to-self
+                -- not to re-dispatch when we encounter the node again later in the iteration
+                -- We use the dispatch_id object to record this by adding the nodes to skip as keys pointing
+                -- to lua true values.
+                --
+                -- Note that if live_dispatch.current_node == re_registration then dispatch has indeed already
+                -- occured (indeed, it's happening right now!).  Both conditions above would be met at once,
+                -- so to avoid any special-case code for this circumstance it is important to check the two
+                -- conditionals above in the same order listed.
+                --
+                -- Also note: we should never encounter "self" during interation (indicating the end of the
+                -- node-list), as, if the event was already at the end of the list, we should have quit,
+                -- above, just after the "nothing to do, registrant already is at the end of the list
+                -- comment.
+                --
+                local i = self.next
+                -- these have no semantic value but are set aside as locals for performance reasons
+                local oldnext = re_registration.next
+                local current = live_dispatch.current_node
+                while true do
+                    if i == oldnext then
+                        live_dispatch[registrant] = true
+                        break
+                    elseif i == current then
+                        -- nothing to do, dispatch has not yet occured
+                        break
+                    end
+                    i = i.next
+                    Is.Assert(i ~= self, "EventRegistry:add_listener: something impossible happened.  theres a bug somewhere.")
+                end
+            end
+        end
+    end
+
     return self
 end
 
@@ -114,8 +185,9 @@ end
 -- @tparam[opt] mixed pattern
 -- @return (<span class="types">@{EventRegistry}</span>) EventRegistry object itself, for call chaining
 function EventRegistry:remove_listener(listener, matcher, pattern)
-    Is.Assert.Not.Nil(self, 'missing self argument and not invoked as registry:remove(...)')
-    Is.Assert.Is.Callable(listener, 'missing required listener argument or not Callable')
+    Is.Assert.Not.Nil(self, 'EventRegistry:remove_listener invoked without self argument: perhaps you used a dot instead of a colon?', 2)
+    Is.Assert.True(self._is_LinkedList, 'EventRegistry:remove_listener self argument invalid: perhaps you used a dot instead of a colon?', 2)
+    Is.Assert.Is.Callable(listener, 'EventRegistry:remove_listener missing required listener argument or not Callable')
 
     local found_something = false
     for registrant in self:nodes() do
@@ -202,7 +274,7 @@ end
 -- @tparam dispatch_id table singleton table to distinguish between iterations
 -- @return boolean False, by default.  Subclasses may override to return True if they wish
 -- to abort processing.
-function EventRegistry:abort_dispatch(event, dispatch_id) -- luacheck: ignore self event dispatch_id
+function EventRegistry:abort_dispatch(event, dispatch_id) -- luacheck: self ignore event dispatch_id
     return false
 end
 
@@ -213,7 +285,7 @@ end
 -- @param event the event being dispatched
 -- @tparam dispatch_id table singleton table to distinguish between iterations
 -- @treturn table event table.  If provided, replaces the event object
-function EventRegistry:prepare_event(event, dispatch_id) -- luacheck: ignore self event dispatch_id
+function EventRegistry:prepare_event(event, dispatch_id) -- luacheck: ignore event dispatch_id
 end
 
 --- Calls the registered listeners, with the given event object, if provided.
@@ -225,6 +297,9 @@ end
 -- Lua protected mode.  Errors emitted in protected mode are logged but
 -- otherwise ignored.  Event processing continues and dispatch always succeeds.
 function EventRegistry:dispatch(event, protected_mode)
+    Is.Assert.Not.Nil(self, 'EventRegistry:dispatch invoked without self argument: perhaps you used a dot instead of a colon?', 2)
+    Is.Assert.True(self._is_LinkedList, 'EventRegistry:dispatch self argument invalid: perhaps you used a dot instead of a colon?', 2)
+
     event = event or {}
 
     -- protected_mode runs the listener and matcher in pcall; forcing crc can only be
@@ -233,7 +308,14 @@ function EventRegistry:dispatch(event, protected_mode)
 
     -- per-dispatch singleton.  Allows to distinguish between iterations when
     -- event object is recycled (i.e. event "X" listener triggers self:dispatch(X))
-    local dispatch_id = {}
+    -- additionally serves as a set of nodes to skip during iteration; the skips are
+    -- required to identify nodes that have been added to the registry while iteration
+    -- it a set/bag of registrants (see _Programming_In_Lua_ 1st Ed. §11.5) with weak keys.
+    local dispatch_id = setmetatable({}, {__mode = 'k'})
+
+    -- all the dispatch id's are tracked in live_dispatches, which is also a set/bag.
+    -- so we have to add this dispatch into the list
+    self.live_dispatches[dispatch_id] = true
 
     -- final preparations of event object before dispatch
     local prepared_event = self:prepare_event(event, dispatch_id)
@@ -243,25 +325,39 @@ function EventRegistry:dispatch(event, protected_mode)
     end
 
     for registrant in self:nodes() do
-        if self:abort_dispatch(event, dispatch_id) then
-            return
-        end
-        if protected then
-            if run_protected(registrant, event) == EventRegistry.stop_processing then
+        -- remember where we are in dispatch_id.current_node
+        -- nb: this is just clever enough to be a bit confusing.
+        -- dispatch_id here serves as both a unique identifier and a place to
+        -- announce this "current node" information to interested consumers
+        -- (ie :remove_listener())
+        dispatch_id.current_node = registrant
+        -- are we supposed to skip this node?
+        if not dispatch_id[registrant] then
+            if self:abort_dispatch(event, dispatch_id) then
                 return
             end
-        elseif registrant.matcher then
-            if registrant.matcher(event, registrant.pattern) then
+            if protected then
+                if run_protected(registrant, event) == EventRegistry.stop_processing then
+                    return
+                end
+            elseif registrant.matcher then
+                if registrant.matcher(event, registrant.pattern) then
+                    if registrant.listener(event) == EventRegistry.stop_processing then
+                        return
+                    end
+                end
+            else
                 if registrant.listener(event) == EventRegistry.stop_processing then
                     return
                 end
             end
-        else
-            if registrant.listener(event) == EventRegistry.stop_processing then
-                return
-            end
         end
     end
+
+    -- Dispatch is no longer live so we can drop it from the set.
+    self.live_dispatches[dispatch_id] = nil
+    -- But just in case someone is still holding it, drop the node from the tracker
+    dispatch_id.current_node = nil
 end
 
 return EventRegistry
