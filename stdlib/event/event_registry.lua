@@ -165,7 +165,7 @@ end
 function EventRegistry:remove_listener(listener, matcher, pattern)
     Is.Assert.Not.Nil(self, 'EventRegistry:remove_listener invoked without self argument: perhaps you used a dot instead of a colon?', 2)
     Is.Assert.True(self._is_LinkedList, 'EventRegistry:remove_listener self argument invalid: perhaps you used a dot instead of a colon?', 2)
-    Is.Assert.Is.Callable(listener, 'EventRegistry:remove_listener missing required listener argument or not Callable')
+    Is.Assert.Callable(listener, 'EventRegistry:remove_listener missing required listener argument or not Callable')
 
     local found_something = false
     for registrant in self:nodes() do
@@ -214,7 +214,7 @@ local function run_protected(registrant, event, force_crc)
 
     -- If the listener errors lets make sure someone notices
     if not success then
-        if not event.log_and_print(err) then
+        if not registrant.log_and_print(err) then
             -- no players received the message, force a real error so someone notices
             error(err)
         end
