@@ -171,20 +171,20 @@ function EventRegistry:remove_listener(listener, matcher, pattern)
     for registrant in self:nodes() do
         if listener == registrant.listener then
             if not matcher and not pattern then
-                registrant.remove()
+                registrant:remove()
                 found_something = true
             elseif matcher then
                 if matcher == registrant.matcher then
                     if not pattern then
-                        registrant.remove()
+                        registrant:remove()
                         found_something = true
                     elseif pattern and pattern == registrant.pattern then
-                        registrant.remove()
+                        registrant:remove()
                         found_something = true
                     end
                 end
             elseif pattern and pattern == registrant.pattern then
-                registrant.remove()
+                registrant:remove()
                 found_something = true
             end
         end
