@@ -21,27 +21,32 @@ local EventRegistrant = setmetatable(
     {
         _module = 'event_registry',
         _class_name = 'EventRegistrant',
+        _mt = LinkedList:_mtcopy()
     },
     {
-        __index = function(self, index)
-            -- alias 'listener' to 'item'
-            if index == 'listener' then
-                return self.item
-            else
-                return LinkedListNode[index]
-            end
-        end,
-        __newindex = function(self, index, value)
-            -- alias 'listener' to 'item'
-            if index == 'listener' then
-                rawset(self, 'item', value)
-            else
-                rawset(self, index, value)
-            end
-        end
+        __index = LinkedListNode
     }
 )
 EventRegistrant._class = EventRegistrant
+function EventRegistrant._mt.__index(self, index)
+    -- alias 'listener' to 'item'
+    if index == 'listener' then
+        return self.item
+    else
+        -- the following is a shortcut since LinkedListNode._mt.__index == LinkedListNode
+        return LinkedListNode[index]
+    end
+end
+
+function EventRegistrant._mt.__newindex(self, index, value)
+    -- alias 'listener' to 'item'
+    if index == 'listener' then
+        rawset(self, 'item', value)
+    else
+        -- nb: LinkedListNode._mt.__setindex == nil
+        rawset(self, index, value)
+    end
+end
 
 local EventRegistry = setmetatable(
     {

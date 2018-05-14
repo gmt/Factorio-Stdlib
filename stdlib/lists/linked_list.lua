@@ -4,6 +4,14 @@
 local Core = require('stdlib/core')
 local Is = require('stdlib/utils/is')
 
+-- dumb shallow copy suitable for cloning instance metatables in subclasses
+local _mtcopy = function(self)
+    local result = {}
+    for k, v in pairs(self._mt) do
+        result[k] = v
+    end
+end
+
 -- @class LinkedListNode
 -- @usage local llnode = linkedlist.append(item)
 local LinkedListNode = setmetatable(
@@ -11,7 +19,8 @@ local LinkedListNode = setmetatable(
         _module = 'linked_list',
         _class_name = 'LinkedListNode',
         _is_LinkedListNode = true,
-        _mt = {}
+        _mt = {},
+        _mtcopy = _mtcopy
     },
     {
         __index = Core.__index
@@ -28,7 +37,8 @@ local LinkedList = setmetatable(
         _class_name = 'LinkedList',
         _is_LinkedList = true,
         _node_class = LinkedListNode,
-        _mt = {}
+        _mt = {},
+        _mtcopy = _mtcopy
     },
     {
         __index = Core.__index
