@@ -288,13 +288,40 @@ function LinkedList:remove(index)
     end
 end
 
+function LinkedListNode:graft_after(target)
+    Is.Assert.Not.Nil(target, 'LinkedListNode.graft_after: Missing node argument or not invoked as node:graft_after(target)', 3)
+    repeat
+        target = target.next
+    until not target.is_tombstone
+    self.next = target
+    self.prev = target.prev
+    target.prev = self
+    self.prev.next = self
+end
+
+function LinkedListNode:graft_before(target)
+    Is.Assert.Not.Nil(target, 'LinkedListNode.graft_after: Missing node argument or not invoked as node:graft_after(target)', 3)
+    repeat
+        target = target.prev
+    until not target.is_tombstone
+    self.prev = target
+    self.next = target.next
+    target.next = self
+    self.next.prev = self
+end
+
+function LinkedListNode:prune()
+    Is.Assert.Not.Nil(self, 'LinkedListNode.prune: Missing self argument (invoke as node:prune())', 3)
+    self.prev.next = self.next
+    self.next.prev = self.prev
+    return self
+end
+
 function LinkedListNode:remove()
     Is.Assert.Not.Nil(self, 'LinkedListNode.remove: Missing self argument (invoke as node:remove())', 3)
     Is.Assert.Not(self.is_tombstone, 'LinkedListNode.remove: Double-removal detected.', 3)
-    self.prev.next = self.next
-    self.next.prev = self.prev
     self.is_tombstone = true
-    return self
+    return self:prune()
 end
 
 function LinkedList:clear()
