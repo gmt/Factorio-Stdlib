@@ -17,7 +17,7 @@ local LinkedList = require('stdlib/lists/linked_list')
 local LinkedListNode = LinkedList._node_class
 local Is = require('stdlib/utils/is')
 
-local EventRegistryNode = setmetatable(
+local EventRegistrant = setmetatable(
     {
         _module = 'event_registry',
         _class_name = 'EventRegistrant',
@@ -41,13 +41,13 @@ local EventRegistryNode = setmetatable(
         end
     }
 )
-EventRegistryNode._class = EventRegistryNode
+EventRegistrant._class = EventRegistrant
 
 local EventRegistry = setmetatable(
     {
         _module = 'event_registry',
         _class_name = 'EventRegistry',
-        _node_class = EventRegistryNode,
+        _node_class = EventRegistrant,
         stop_processing = {} -- arbitrary singleton value
     },
     {
