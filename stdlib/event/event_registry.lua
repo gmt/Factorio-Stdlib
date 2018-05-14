@@ -102,84 +102,57 @@ function EventRegistry:add_listener(listener, matcher, pattern)
     Is.Assert(Is.Callable(listener), 'listener missing or not callable')
     Is.Assert(Is.Nil(matcher) or Is.Callable(matcher), 'matcher must be callable')
 
-    -- Is it a re-registration of an already registered listener?
-    local re_registration = false
-
-    -- If listener is already registered for this event: remove it for re-insertion at the end.
+    -- If listener is already registered for this event: move listener to the end of the list
     for registrant in self:nodes() do
         if registrant.listener == listener and registrant.pattern == pattern and registrant.matcher == matcher then
             if registrant.next == self then
                 -- nothing to do, registrant already is at the end of the list
                 return self
             end
-            -- nb: what if registrant is already marked for skipping during dispatch?
-            -- In this case we should never "change our minds" about skipping.  Since we
-            -- only add to the set but never subtract (the dispatch_id lifecycle takes care
-            -- of the rest of the housekeeping for us), there is no need to worry about it,
-            -- so long as we prune-graft the node, rather than build ourselves a new one.
-            -- Remembering this here causes just that to occur immediately below.
-            re_registration = registrant:remove()
-            break
-        end
-    end
-
-    -- insert the new registrant
-    local registrant = re_registration or self:append(listener)
-    -- if re_registration, these should be harmless noops
-    registrant.matcher = matcher
-    registrant.pattern = pattern
-
-    if re_registration then
-        for live_dispatch in pairs(self.live_dispatches) do
-            -- probably not neccesary but just a sanity check:
-            if live_dispatch.current_node then
-                --
-                -- if the dispatch already dispatched to re_registration, then we have to remember not to
-                -- repeat the dispatch a second time when we encounter the re-added registrant again
-                --
-                -- We just scan through from the first node until we encounter either:
-                --
-                --  o the place where the removed node was before removal (re_registration.next),
-                --    (no wierd stuff should have happened so re_registration.next still points
-                --    to where the removed used to be): the event has already been dispatched to the
-                --    moved listener
-                --
-                --  o the current node (live_dispatch.current_node): the event has not yet been dispatched
-                --    to the moved listener.
-                --
-                -- If the event was already dispatched to the moved listener, we have to make a note-to-self
-                -- not to re-dispatch when we encounter the node again later in the iteration
-                -- We use the dispatch_id object to record this by adding the nodes to skip as keys pointing
-                -- to lua true values.
-                --
-                -- Note that if live_dispatch.current_node == re_registration then dispatch has indeed already
-                -- occured (indeed, it's happening right now!).  Both conditions above would be met at once,
-                -- so to avoid any special-case code for this circumstance it is important to check the two
-                -- conditionals above in the same order listed.
-                --
-                -- Also note: we should never encounter "self" during interation (indicating the end of the
-                -- node-list), as, if the event was already at the end of the list, we should have quit,
-                -- above, just after the "nothing to do, registrant already is at the end of the list
-                -- comment.
-                --
-                local i = self.next
-                -- these have no semantic value but are set aside as locals for performance reasons
-                local oldnext = re_registration.next
-                local current = live_dispatch.current_node
-                while true do
-                    if i == oldnext then
-                        live_dispatch[registrant] = true
-                        break
-                    elseif i == current then
-                        -- nothing to do, dispatch has not yet occured
-                        break
+            -- remember where the registrant was
+            local oldnext = registrant.next
+            -- prune registrant from its current location and graft it at the end of the registry
+            registrant:prune()
+            registrant:graft_before(self)
+            -- find ongoing dispatches that may already have dispatched to registrant
+            for live_dispatch in pairs(self.live_dispatches) do
+                if live_dispatch.current_node then
+                    -- If the live dispatch already processed registrant, we have to remember not
+                    -- to repeat the dispatch when it encounters the grafted registrant at the end
+                    -- We just scan through from the first node until we encounter either:
+                    --
+                    --  o oldnext, the node that followed registrant before the move (need to suppress)
+                    --  o the node (live_dispatch.current_node) currently being dispatched (no need to suppress)
+                    --
+                    -- We use the dispatch_id object to record the suppression
+                    --
+                    -- Note: if live_dispatch.current_node == registrant then dispatch has already occured
+                    -- (indeed it is ongoing).  To avoid special-casing, we have to check in the order above.
+                    local i = self.next
+                    local current = live_dispatch.current_node
+                    while true do
+                        if i == oldnext then
+                            live_dispatch[registrant] = true
+                            break
+                        elseif i == current then
+                            -- nothing to do, live_dispatch hasn't yet reached registrant
+                            break
+                        end
+                        i = i.next
+                        Is.Assert(i ~= self, "EventRegistry:add_listener: something impossible happened.  Theres a bug somewhere.")
                     end
-                    i = i.next
-                    Is.Assert(i ~= self, "EventRegistry:add_listener: something impossible happened.  theres a bug somewhere.")
                 end
             end
+            -- with the found duplicate pruned and grafted, and all
+            -- any needed dispatch accounting complete, we are done.
+            return self
         end
     end
+
+    local new_registrant = self:append(listener)
+    -- if registrant, these should be harmless noops
+    new_registrant.matcher = matcher
+    new_registrant.pattern = pattern
 
     return self
 end
@@ -284,15 +257,6 @@ function EventRegistry:abort_dispatch(event, dispatch_id) -- luacheck: self igno
 end
 
 
---- pure-virtual function which may be overridden to perform
--- custom operations on the event object before dispatch begins.
--- Called once only, just before dispatch begins.
--- @param event the event being dispatched
--- @tparam dispatch_id table singleton table to distinguish between iterations
--- @treturn table event table.  If provided, replaces the event object
-function EventRegistry:prepare_event(event, dispatch_id) -- luacheck: ignore event dispatch_id
-end
-
 --- Calls the registered listeners, with the given event object, if provided.
 -- @see https://forums.factorio.com/viewtopic.php?t=32039#p202158 Invalid Event Objects
 -- <p>Listeners are dispatched in the order they were registered; if a listener is
@@ -322,9 +286,6 @@ function EventRegistry:dispatch(event, protected_mode)
     -- so we have to add this dispatch into the list
     self.live_dispatches[dispatch_id] = true
 
-    -- final preparations of event object before dispatch
-    local prepared_event = self:prepare_event(event, dispatch_id)
-    event = Is.Not.Nil(prepared_event) and prepared_event or event
     if Is.Nil(event.name) then
         event.name = self.name
     end
