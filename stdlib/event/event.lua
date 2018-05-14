@@ -15,8 +15,10 @@
 
 local table = require('stdlib/utils/table')
 
+local EventRegistry = require('stdlib/event/event_registry')
+
 --Holds the event registry
-local event_registry = {}
+local event_registry_table = {}
 local event_names = table.invert(defines.events)
 
 local Event = {
@@ -37,12 +39,52 @@ local Event = {
     force_crc = false,
     event_order = nil, -- Assigned when needed due to crash in 0.16.41
     counts = {}, -- assigned when needed
-    stop_processing = {}, -- just has to be unique
+    stop_processing = EventRegistry.stop_processing -- alias EventRegistry.stop_processing for convenience
 }
 setmetatable(Event, require('stdlib/core'))
 
 local Is = require('stdlib/utils/is')
 local inspect = require('stdlib/vendor/inspect')
+
+-- this validity check is performed after each listener callback
+local function stdlib_event_abort_dispatch(registry, event)
+    -- force a crc check if option is enabled. This is a debug option and will hamper performance if enabled
+    if (Event.force_crc or event.force_crc) and game then
+        log('CRC check called for event [' .. event.name .. ']')
+        game.force_crc()
+    end
+
+    -- Check for userdata and stop processing this and further handlers if not valid
+    -- This is the same behavior as factorio events.
+    -- This is done before each dispatch loop as other events can modify the event.
+    for _, val in pairs(event) do
+        if Is.Object(val) and not val.valid then
+            return true
+        end
+    end
+
+    -- not a kludge, really; more a sign that abort_dispatch may not the best name
+    if (Event.inspect_event or event.inspect_event) and game then
+        if not Event.inspect_append then
+            game.remove_path(get_file_path('events/'))
+            Event.inspect_append = true
+        end
+        local result = inspect(event) .. '\n'
+        game.write_file(get_file_path('events/' .. get_event_name(event.input_name or event.name) .. '.lua'), result, true)
+        game.write_file(get_file_path('events/ORDERED.lua'), result , true)
+    end
+
+    return false
+end
+
+-- A bit silly to create a subclass of EventRegistry, which is, in turn,
+-- a subclass of LinkedList, just to override this single method via metatable.
+-- Avoid excessive meta-indirection by injecting it into each instance instead.
+local function create_stdlib_event_registry(name)
+    local result = EventRegistry:new(name)
+    result.abort_dispatch = stdlib_event_abort_dispatch
+    return result
+end
 
 local bootstrap_register = {
     on_init = function()
@@ -109,8 +151,8 @@ function Event.register(event_id, handler, matcher, pattern)
 
     -- If the event_id has never been registered before make sure we call the correct script action to register
     -- our Event handler with factorio
-    if not event_registry[event_id] then
-        event_registry[event_id] = {}
+    if not event_registry_table[event_id] then
+        event_registry_table[event_id] = create_stdlib_event_registry(event_id)
 
         if Is.String(event_id) then
             --String event ids will either be Bootstrap events or custom input events
@@ -128,21 +170,8 @@ function Event.register(event_id, handler, matcher, pattern)
         end
     end
 
-    local registry = event_registry[event_id]
+    event_registry_table[event_id]:add_listener(handler, matcher, pattern)
 
-    --If handler is already registered for this event: remove it for re-insertion at the end.
-    if #registry > 0 then
-        for i, registered in ipairs(registry) do
-            if registered.handler == handler and registered.pattern == pattern and registered.matcher == matcher then
-                table.remove(registry, i)
-                log('Same handler already registered for event ' .. event_id .. ' at position ' .. i .. ', moving it to the bottom')
-                break
-            end
-        end
-    end
-
-    --Finally insert the handler
-    table.insert(registry, {handler = handler, matcher = matcher, pattern = pattern})
     return Event
 end
 
@@ -163,62 +192,20 @@ function Event.remove(event_id, handler, matcher, pattern)
     -- Handle recursion here
     if Is.Table(event_id) then
         for _, id in pairs(event_id) do
-            Event.remove(id, handler)
+            Event.remove(id, handler, matcher, pattern)
         end
         return Event
     end
 
     Is.Assert(valid_id(event_id))
 
-    local registry = event_registry[event_id]
+    local registry = event_registry_table[event_id]
     if registry then
-        local found_something = false
-        for i = #registry, 1, -1 do
-            local registered = registry[i]
-            if handler then -- handler, possibly matcher, possibly pattern
-                if handler == registered.handler then
-                    if not matcher and not pattern then
-                        table.remove(registry, i)
-                        found_something = true
-                    elseif matcher then
-                        if matcher == registered.matcher then
-                            if not pattern then
-                                table.remove(registry, i)
-                                found_something = true
-                            elseif pattern and pattern == registered.pattern then
-                                table.remove(registry, i)
-                                found_something = true
-                            end
-                        end
-                    elseif pattern and pattern == registered.pattern then
-                        table.remove(registry, i)
-                        found_something = true
-                    end
-                end
-            elseif matcher then -- no handler, matcher, possibly pattern
-                if matcher == registered.matcher then
-                    if not pattern then
-                        table.remove(registry, i)
-                        found_something = true
-                    elseif pattern and pattern == registered.pattern then
-                        table.remove(registry, i)
-                        found_something = true
-                    end
-                end
-            elseif pattern then -- no handler, no matcher, pattern
-                if pattern == registered.pattern then
-                    table.remove(registry, i)
-                    found_something = true
-                end
-            else -- no handler, matcher, or pattern
-                table.remove(registry, i)
-                found_something = true
-            end
-        end
-
-        if found_something and table.size(registry) == 0 then
-            -- Clear the registry data and un subscribe if there are no registered handlers left
-            event_registry[event_id] = nil
+        registry:remove_listener(handler, matcher, pattern)
+        if registry:is_empty() then
+            -- It wasn't empty just a moment ago, so we have removed the last listner.
+            -- Drop from registry table and unsubscribe from the corresponding factorio event.
+            event_registry_table[event_id] = nil
 
             if Is.String(event_id) then
                 -- String event ids will either be Bootstrap events or custom input events
@@ -234,38 +221,11 @@ function Event.remove(event_id, handler, matcher, pattern)
                 -- Use negative values to remove on_nth_tick
                 script.on_nth_tick(math.abs(event_id), nil)
             end
-        elseif not found_something then
-            log('Attempt to deregister already non-registered listener from event: ' .. event_id)
         end
     else
         log('Attempt to deregister already non-registered listener from event: ' .. event_id)
     end
     return Event
-end
-
--- A dispatch helper function
---
--- Call any matcher and, as applicable, the event handler, in protected mode.  Errors are
--- caught and logged to stdout but event processing proceeds thereafter; errors are suppressed.
-local function run_protected(event, registered)
-    local success, err
-
-    if registered.matcher then
-        success, err = pcall(registered.matcher, event, registered.pattern)
-        if success and err then
-            success, err = pcall(registered.handler, event)
-        end
-    else
-        success, err = pcall(registered.handler, event)
-    end
-
-    -- If the handler errors lets make sure someone notices
-    if not success and not Event.log_and_print(err) then
-        -- no players received the message, force a real error so someone notices
-        error(err)
-    end
-
-    return success and err or nil
 end
 
 --- The user should create a table in this format, for a table that will be passed into @{Event.dispatch}.
@@ -295,12 +255,12 @@ function Event.dispatch(event)
     --get the registered handlers from name, input_name, or nth_tick in that priority.
     local registry
 
-    if event.name and event_registry[event.name] then
-        registry = event_registry[event.name]
-    elseif event.input_name and event_registry[event.input_name] then
-        registry = event_registry[event.input_name]
+    if event.name and event_registry_table[event.name] then
+        registry = event_registry_table[event.name]
+    elseif event.input_name and event_registry_table[event.input_name] then
+        registry = event_registry_table[event.input_name]
     elseif event.nth_tick then
-        registry = event_registry[-event.nth_tick]
+        registry = event_registry_table[-event.nth_tick]
     end
 
     if registry then
@@ -314,48 +274,7 @@ function Event.dispatch(event)
         event.tick = event.tick or (game and game.tick) or 0
         event.define_name = event_names[event.name or '']
 
-        for _, registered in ipairs(registry) do
-            -- Check for userdata and stop processing this and further handlers if not valid
-            -- This is the same behavior as factorio events.
-            -- This is done inside the loop as other events can modify the event.
-            for _, val in pairs(event) do
-                if Is.Object(val) and not val.valid then
-                    return
-                end
-            end
-
-            if (Event.inspect_event or event.inspect_event) and game then
-                if not Event.inspect_append then
-                    game.remove_path(get_file_path('events/'))
-                    Event.inspect_append = true
-                end
-                local result = inspect(event) .. '\n'
-                game.write_file(get_file_path('events/' .. get_event_name(event.input_name or event.name) .. '.lua'), result, true)
-                game.write_file(get_file_path('events/ORDERED.lua'), result , true)
-            end
-
-            if protected then
-                if run_protected(event, registered) == Event.stop_processing then
-                    return
-                end
-            elseif registered.matcher then
-                if registered.matcher(event, registered.pattern) then
-                    if registered.handler(event) == Event.stop_processing then
-                        return
-                    end
-                end
-            else
-                if registered.handler(event) == Event.stop_processing then
-                    return
-                end
-            end
-
-            -- force a crc check if option is enabled. This is a debug option and will hamper performance if enabled
-            if (Event.force_crc or event.force_crc) and game then
-                log('CRC check called for event [' .. event.name .. ']')
-                game.force_crc()
-            end
-        end
+        registry:dispatch(event, protected)
     end
 end
 
@@ -382,29 +301,34 @@ function Event.get_event_name(event_name)
     return Event.custom_events[event_name]
 end
 
--- TODO complete stub
+-- TODO complete stub (gmt: is this conceptually different from dispatch()?)
 function Event.raise_event(...)
     script.raise_event(...)
 end
 
-function Event.get_event_handler(event_id)
+-- pretty sure not used but jic...
+function Event.get_event_handler()
+    error("Event.get_event_handler was renamed to Event.get_event_registry")
+end
+
+function Event.get_event_registry(event_id)
     Is.Assert(valid_id(event_id))
     return {
         script = bootstrap_register(event_id) or (valid_event_id(event_id) and script.get_event_handler(event_id)),
-        handlers = event_registry[event_id]
+        registry = event_registry_table[event_id]
     }
 end
 
---- Retrieve the event_registry
--- @treturn table event_registry
-function Event.get_registry()
-    return event_registry
+--- Retrieve the event_registry_table
+-- @treturn table event_registry_table
+function Event.get_registry_table()
+    return event_registry_table
 end
 
 function Event.counts(reg_type)
     local core, nth, on_events = 0, 0, 0
     local events = {}
-    for id, registry in pairs(event_registry) do
+    for id, registry in pairs(event_registry_table) do
         if tonumber(id) then
             if id < 0 then
                 nth = nth + #registry
@@ -437,10 +361,10 @@ function Event.dump_data()
     game.write_file(get_file_path('Event.lua'), inspect(Event))
 
     local r, t = {}, {}
-    for event, data in pairs(event_registry) do
+    for event, data in pairs(event_registry_table) do
         r[get_event_name(event)] = data
         if valid_event_id(event) then
-            t[get_event_name(event)] = script.get_event_handler(event)
+            t[get_event_name(event)] = script.get_event_registry(event):to_stack()
         end
     end
     game.write_file(get_file_path('registry.lua'), inspect(r, {longkeys = true, arraykeys = true}))
