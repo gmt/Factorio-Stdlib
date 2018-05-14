@@ -414,12 +414,13 @@ describe('Event', function ()
     end)
 
     insulate('.remove', function()
-        pending('should remove the running handler if requested', function()
+        it('should remove the running handler if requested', function()
             World.bootstrap()
             local Event = require('stdlib/event/event')
             local f, h = genstub(2)
-            local g = spy(function()
-                Event.remove(0, g) --luacheck: ignore g
+            local g
+            g = spy(function()
+                Event.remove(0, g)
             end)
             Event.register(0, f).register(0, g).register(0, h)
 
@@ -437,14 +438,14 @@ describe('Event', function ()
     end)
 
     insulate('.remove', function()
-        pending('should prevent invocation of subsequent handlers \z
+        it('should prevent invocation of subsequent handlers \z
             during processing of preceeding handlers', function()
             World.bootstrap()
             local Event = require('stdlib/event/event')
+            local g, h, i = genstub(3)
             local f = spy(function()
                 Event.remove(0, g).remove(0, h) --luacheck: ignore g h
             end)
-            local g, h, i = genstub(3)
             Event.register(0, f).register(0, g).register(0, h).register(0, i)
 
             script.raise_event()
