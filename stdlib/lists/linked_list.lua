@@ -315,6 +315,15 @@ function LinkedListNode:prune()
     Is.Assert.Not.Nil(self, 'LinkedListNode.prune: Missing self argument (invoke as node:prune())', 3)
     self.prev.next = self.next
     self.next.prev = self.prev
+    for live_iterator in pairs(self.owner.live_iterators) do
+        if live_iterator.at == self then
+            -- if live_iterator.is_forward_iterator then
+                live_iterator.forced = self.prev
+            -- else
+            --     live_iterator.forced = self.next
+            -- end
+        end
+    end
     return self
 end
 
@@ -381,7 +390,8 @@ function LinkedList:new_node_iterator()
     self.live_iterators[iteration_tracker] = true
     return function(linked_list, node)
         Is.Assert.True(linked_list == self, 'Wrong Linked List provided to node iterator', 3)
-        local nextnode = node
+        local nextnode = iteration_tracker.forced or node
+        iteration_tracker.forced = nil
         -- if items have been removed during iteration, we may encounter
         -- tombstones here.  Once we reach the next non-tombstoned node,
         -- we have found our way back to the remaining legitimate nodes
