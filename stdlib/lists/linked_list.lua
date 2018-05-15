@@ -75,6 +75,7 @@ function LinkedList:new_node(item, prev, next)
     result.next = next or result
     result.prev = prev or result
     result.item = item
+    result.owner = self
     return result
 end
 
