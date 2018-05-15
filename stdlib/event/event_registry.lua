@@ -154,6 +154,13 @@ function EventRegistry:add_listener(listener, matcher, pattern)
     new_registrant.matcher = matcher
     new_registrant.pattern = pattern
 
+    -- ongoing dispatch iterators always exclude registrations they themselves initiate:
+    for live_dispatch in pairs(self.live_dispatches) do
+        if live_dispatch.current_node then
+            live_dispatch[new_registrant] = true
+        end
+    end
+
     return self
 end
 
