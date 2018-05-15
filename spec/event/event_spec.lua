@@ -202,7 +202,7 @@ describe('Event', function ()
     end)
 
     insulate('.register', function()
-        pending('succeeds while processing an event but, if the added handler \z
+        it('succeeds while processing an event but, if the added handler \z
             is for the event being dispatched, does not cause the handler \z
             to fire.', function()
             World.bootstrap()
